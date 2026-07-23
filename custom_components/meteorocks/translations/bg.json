@@ -1,0 +1,69 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Meteo.rocks",
+        "description": "Свързване с публичното API на meteo.rocks. Необходим е API ключ с достъп до каналите current, forecast и nowcasting.",
+        "data": {
+          "api_key": "API ключ",
+          "location": "Местоположение",
+          "name": "Име",
+          "language": "Език на данните",
+          "base_url": "Адрес на сайта"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Повторно удостоверяване",
+        "description": "API ключът беше отхвърлен. Въведете валиден ключ.",
+        "data": {
+          "api_key": "API ключ"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Невалиден или неактивен API ключ",
+      "no_channel_access": "Този API ключ няма достъп до каналите current, forecast и nowcasting",
+      "cannot_connect": "Неуспешна връзка със сайта",
+      "unknown": "Неочаквана грешка"
+    },
+    "abort": {
+      "already_configured": "Това местоположение вече е конфигурирано",
+      "reauth_successful": "Повторното удостоверяване е успешно"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Настройки на Meteo.rocks",
+        "data": {
+          "update_interval": "Интервал на обновяване",
+          "language": "Език на данните"
+        }
+      }
+    }
+  },
+  "selector": {
+    "language": {
+      "options": {
+        "bg": "Български",
+        "en": "Английски"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "wind_speed": { "name": "Скорост на вятъра" },
+      "wind_gust": { "name": "Пориви на вятъра" },
+      "wind_bearing": { "name": "Посока на вятъра" },
+      "condition": { "name": "Условия" },
+      "precipitation_next_hour": { "name": "Валеж следващия час" },
+      "rain_warning_level": { "name": "Ниво на предупреждение за дъжд" },
+      "rain_warning_text": { "name": "Предупреждение за дъжд" },
+      "sunrise": { "name": "Изгрев" },
+      "sunset": { "name": "Залез" },
+      "moon_phase": { "name": "Лунна фаза" },
+      "forecast_model_run": { "name": "Модел на прогнозата" },
+      "nowcast_start": { "name": "Начало на радарната прогноза" }
+    }
+  }
+}

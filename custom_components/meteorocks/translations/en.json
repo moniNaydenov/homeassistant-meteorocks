@@ -1,0 +1,69 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Meteo.rocks",
+        "description": "Connect to the meteo.rocks public API. You need an API key with access to the current, forecast and nowcasting channels.",
+        "data": {
+          "api_key": "API key",
+          "location": "Location",
+          "name": "Name",
+          "language": "Data language",
+          "base_url": "Site URL"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate Meteo.rocks",
+        "description": "The API key was rejected. Enter a valid key.",
+        "data": {
+          "api_key": "API key"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid or inactive API key",
+      "no_channel_access": "This API key has no access to the current, forecast and nowcasting channels",
+      "cannot_connect": "Could not connect to the site",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "This location is already configured",
+      "reauth_successful": "Re-authentication was successful"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Meteo.rocks options",
+        "data": {
+          "update_interval": "Update interval",
+          "language": "Data language"
+        }
+      }
+    }
+  },
+  "selector": {
+    "language": {
+      "options": {
+        "bg": "Bulgarian",
+        "en": "English"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "wind_speed": { "name": "Wind speed" },
+      "wind_gust": { "name": "Wind gust" },
+      "wind_bearing": { "name": "Wind bearing" },
+      "condition": { "name": "Condition" },
+      "precipitation_next_hour": { "name": "Precipitation next hour" },
+      "rain_warning_level": { "name": "Rain warning level" },
+      "rain_warning_text": { "name": "Rain warning" },
+      "sunrise": { "name": "Sunrise" },
+      "sunset": { "name": "Sunset" },
+      "moon_phase": { "name": "Moon phase" },
+      "forecast_model_run": { "name": "Forecast model run" },
+      "nowcast_start": { "name": "Nowcast model start" }
+    }
+  }
+}
