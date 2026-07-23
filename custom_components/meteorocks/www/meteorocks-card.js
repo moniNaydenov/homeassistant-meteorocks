@@ -23,6 +23,16 @@
 
   const STATIC = "/meteorocks_static";
   const NOWCAST_TILES = "https://tiles.meteo.rocks/nowcasting";
+
+  // The site's font (Exo 2, bundled). @font-face must live in the document,
+  // not the shadow root, so inject the stylesheet into <head> once.
+  if (!document.getElementById("meteorocks-fonts")) {
+    const fontLink = document.createElement("link");
+    fontLink.id = "meteorocks-fonts";
+    fontLink.rel = "stylesheet";
+    fontLink.href = STATIC + "/fonts/exo2.css";
+    document.head.appendChild(fontLink);
+  }
   const OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
   const MODEL_BOUNDS = [
     [44.27843418470268, 22.35741230236595],
@@ -150,9 +160,9 @@
   --fc-mono: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   --fc-shadow-xs: 0 1px 2px rgba(0,0,0,.06), 0 1px 3px 1px rgba(0,0,0,.03);
   --fc-shadow-sm: 0 1px 2px rgba(0,0,0,.06), 0 2px 6px 2px rgba(0,0,0,.05);
-  font-family: Roboto, 'Segoe UI', sans-serif;
+  font-family: 'Exo 2', Roboto, 'Segoe UI', sans-serif;
   color: var(--fc-ink);
-  margin-bottom: 1rem;
+  margin-bottom: 16px;
 }
 .fc2.dark-mode {
   --fc-surface-1: #161c22; --fc-surface-2: #1b232b; --fc-surface-bright: #10161b;
@@ -162,7 +172,7 @@
   --fc-rain: #4fc3f7; --fc-hover: rgba(143,205,255,.08); --fc-surface-3: #202a33;
   --fc-secondary-container: #08436e; --fc-ok: #7fce86;
 }
-.fc2 h3 { color: var(--fc-ink); font-size: 1.4rem; font-weight: 500; margin: 0 0 .5rem; padding: 0 .5rem; }
+.fc2 h3 { color: var(--fc-ink); font-size: 22.4px; font-weight: 500; margin: 0 0 8px; padding: 0 8px; }
 .fc2 a { color: var(--fc-primary); }
 .mri { --mdc-icon-size: 1em; display: inline-flex; align-items: center; }
 img.weather-icon { display: block; }
@@ -179,9 +189,9 @@ img.weather-icon { display: block; }
 .cc-card .cc-upd { font-size: 11px; font-family: var(--fc-mono); color: var(--fc-ink-3); white-space: nowrap; text-align: right; flex: 0 1 auto; margin-left: auto; }
 .cc-card .cc-hero { display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; padding: 6px 22px 16px; }
 .cc-card .cc-hero-l { display: flex; align-items: center; gap: 18px; min-width: 0; }
-.cc-card .cc-glyph { width: 5rem; height: 5rem; border-radius: 20px; flex: 0 0 auto; display: grid; place-items: center; overflow: hidden; }
-.cc-card .cc-glyph > .weather-icon { width: 5rem; height: 5rem; margin: 0; }
-.cc-card .cc-tempchip { display: inline-flex; align-items: center; font-size: 4.25rem; font-weight: 600; line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; padding: 6px 22px; border-radius: 18px; }
+.cc-card .cc-glyph { width: 80px; height: 80px; border-radius: 20px; flex: 0 0 auto; display: grid; place-items: center; overflow: hidden; }
+.cc-card .cc-glyph > .weather-icon { width: 80px; height: 80px; margin: 0; }
+.cc-card .cc-tempchip { display: inline-flex; align-items: center; font-size: 68px; font-weight: 600; line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; padding: 6px 22px; border-radius: 18px; }
 .cc-card .cc-tempchip .deg { font-weight: 300; opacity: .7; }
 .cc-card .cc-wind { position: relative; width: 96px; height: 96px; flex: 0 0 auto; }
 .cc-card .cc-wind-ring { position: absolute; inset: 0; }
@@ -207,7 +217,7 @@ img.weather-icon { display: block; }
 .cc-card .cc-stats.cols3 .cc-stat:nth-child(3n) { border-right: none; }
 .cc-card .cc-stats.cols3 .cc-stat:nth-last-child(-n+3) { border-bottom: none; }
 @container (max-width: 420px) {
-  .cc-card .cc-tempchip { font-size: 3.25rem; padding: 5px 16px; }
+  .cc-card .cc-tempchip { font-size: 52px; padding: 5px 16px; }
   .cc-card .cc-stats.cols3 { grid-template-columns: repeat(2, 1fr); }
   .cc-card .cc-stats.cols3 .cc-stat:nth-child(3n) { border-right: 1px solid var(--fc-hairline); }
   .cc-card .cc-stats.cols3 .cc-stat:nth-child(2n) { border-right: none; }
@@ -217,7 +227,7 @@ img.weather-icon { display: block; }
 span.moon-phase {
   background-image: url('${STATIC}/moonphases.png');
   background-repeat: no-repeat; background-size: auto 100%;
-  width: 1.6rem; height: 1.8rem; display: inline-block; flex: 0 0 auto;
+  width: 25.6px; height: 28.8px; display: inline-block; flex: 0 0 auto;
 }
 span.moon-phase.phase-0 { background-position: 0 0; }
 span.moon-phase.phase-1 { background-position: 12.5% 0; }
@@ -299,10 +309,10 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
 .fc2-pop.zero { color: var(--fc-ink-4); font-weight: 400; }
 .fc2 .r-time { height: 30px; } .fc2 .r-band { height: 72px; } .fc2 .r-temp { height: 42px; }
 .fc2 .r-dir { height: 36px; } .fc2 .r-spd { height: 26px; } .fc2 .r-mm { height: 26px; } .fc2 .r-pop { height: 30px; }
-.fc2-band > .weather-icon, .fc2 .r-band > .weather-icon { width: 4.2rem; height: 4.2rem; margin: 0; }
+.fc2-band > .weather-icon, .fc2 .r-band > .weather-icon { width: 67.2px; height: 67.2px; margin: 0; }
 .fc2-expand { display: none; }
 .fc2-chev { display: none; }
-.forecast-lastmodelrun { font-size: 12px; color: var(--fc-ink-3); padding: 0 1rem 1rem; }
+.forecast-lastmodelrun { font-size: 12px; color: var(--fc-ink-3); padding: 0 16px 16px; }
 @keyframes fc2drop { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 
 @container (max-width: 760px) {
@@ -310,7 +320,7 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
   .fc2-day { flex: 0 0 auto; flex-direction: row; align-items: center; gap: 11px; padding: 8px 10px; border-radius: 14px; }
   .fc2-dhead { text-align: left; padding: 0; flex: 0 0 50px; }
   .fc2-dname { font-size: 17px; }
-  .fc2-band { margin: 0; flex: 0 0 74px; height: 4.2rem; border-radius: 12px; }
+  .fc2-band { margin: 0; flex: 0 0 74px; height: 67.2px; border-radius: 12px; }
   .fc2-night { width: 24px; height: 24px; right: 5px; bottom: 5px; }
   .fc2-night .weather-icon { width: 16px; height: 16px; }
   .fc2-temps { flex-direction: row; gap: 5px; padding: 0; flex: 0 0 auto; }
@@ -362,7 +372,7 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
   .fc2-lower .fc2-c.r-pop { flex: 0.8; }
   .fc2-spd { font-size: 12px; } .fc2-mm, .fc2-pop { font-size: 12px; }
   .fc2-dir .ar { font-size: 14px; } .fc2-dir .ab { font-size: 10px; }
-  .fc2 .r-band > .weather-icon { width: 3rem; height: 3rem; }
+  .fc2 .r-band > .weather-icon { width: 48px; height: 48px; }
 }
 @container (max-width: 400px) {
   .fc2 .fc2-days { padding: 8px; gap: 7px; }
@@ -384,7 +394,7 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
   .fc2-mhead .fc2-c.r-time { flex: 0 0 28px; }
   .fc2-mhead .fc2-c.r-band { flex: 0 0 52px; }
   .fc2-expand .fc2-hhead { padding: 10px 12px 6px; } .fc2-expand .fc2-htitle { font-size: 16px; }
-  .fc2-band > .weather-icon, .fc2 .r-band > .weather-icon { width: 2rem; height: 2rem; }
+  .fc2-band > .weather-icon, .fc2 .r-band > .weather-icon { width: 32px; height: 32px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .fc2-day.sel + .fc2-expand { animation: none !important; }
@@ -394,25 +404,33 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
 .mr-mapcard { background: var(--fc-surface-1); border-radius: 24px; box-shadow: var(--fc-shadow-sm); overflow: hidden; margin-bottom: 12px; }
 .mr-maph { position: relative; height: 420px; width: 100%; }
 .mr-map { height: 100%; width: 100%; background: var(--fc-surface-2); }
-.mr-map-title { position: absolute; z-index: 1000; top: .5rem; left: 4rem; font-weight: 700; color: #1a1c1e; text-shadow: 0 0 3px #fff; font-size: 14px; }
-.mr-timeline-holder { overflow-x: auto; overflow-y: hidden; scroll-behavior: smooth; padding: .75rem; }
+.mr-map-title { position: absolute; z-index: 1000; top: 8px; left: 64px; font-weight: 700; color: #1a1c1e; text-shadow: 0 0 3px #fff; font-size: 14px; }
+.mr-timeline-holder { overflow-x: auto; overflow-y: hidden; scroll-behavior: smooth; padding: 12px; }
 .mr-timeline { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px 0; }
 .mr-timeline .times { display: flex; flex-wrap: nowrap; }
-.mr-timeline .time { width: 5rem; height: 3rem; cursor: pointer; color: var(--fc-primary); border-left: 1px solid #ddd; border-top: 1px solid #ddd; border-bottom: 1px solid #ddd; display: flex; flex-direction: column; flex: 0 0 auto; justify-content: center; align-items: center; font-size: 14px; }
+.mr-timeline .time { width: 80px; height: 48px; cursor: pointer; color: var(--fc-primary); border-left: 1px solid #ddd; border-top: 1px solid #ddd; border-bottom: 1px solid #ddd; display: flex; flex-direction: column; flex: 0 0 auto; justify-content: center; align-items: center; font-size: 16px; }
 .fc2.dark-mode .mr-timeline .time { border-color: var(--fc-outline-var); }
-.mr-timeline .time:last-child { border-right: 1px solid #ddd; border-bottom-right-radius: .5rem; border-top-right-radius: .5rem; }
+.mr-timeline .time:last-child { border-right: 1px solid #ddd; border-bottom-right-radius: 8px; border-top-right-radius: 8px; }
 .fc2.dark-mode .mr-timeline .time:last-child { border-right-color: var(--fc-outline-var); }
-.mr-timeline .time:first-child { border-bottom-left-radius: .5rem; border-top-left-radius: .5rem; }
+.mr-timeline .time:first-child { border-bottom-left-radius: 8px; border-top-left-radius: 8px; }
 .mr-timeline .time.past { background-color: #edf3fb; border-color: #fff; border-top-color: #edf3fb; border-bottom-color: #edf3fb; }
 .fc2.dark-mode .mr-timeline .time.past { background-color: var(--fc-surface-2); border-color: var(--fc-surface-2); }
 .mr-timeline .time.active { background-color: var(--fc-primary); border-color: var(--fc-primary); font-weight: bold; color: #fff; }
 .fc2.dark-mode .mr-timeline .time.active { color: #062a4a; }
-.mr-timeline .time .nowlbl { margin-top: -0.2rem; font-size: 10px; }
-.mr-play { width: 3rem; height: 3rem; border-radius: 50%; background-color: var(--fc-primary); color: #fff; margin-right: .5rem; cursor: pointer; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; --mdc-icon-size: 20px; }
+.mr-timeline .time .nowlbl { margin-top: -3.2px; font-size: 12px; }
+.mr-play { width: 48px; height: 48px; border-radius: 50%; background-color: var(--fc-primary); color: #fff; margin-right: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; --mdc-icon-size: 26px; }
 .fc2.dark-mode .mr-play { color: #062a4a; }
 .mr-timeline-info { flex: 1 1 100%; text-align: center; font-size: 12px; color: var(--fc-ink-3); }
 .mr-timeline-info .radars { font-size: 11px; }
-@container (max-width: 470px) { .mr-timeline .time { width: 3.4rem; } .mr-maph { height: 340px; } }
+@container (max-width: 470px) { .mr-timeline .time { width: 54.4px; } .mr-maph { height: 340px; } }
+
+/* current-position marker (port of the site's fa-stack divIcon: white disc,
+   meteoblue ring + center dot, brief beat animation) */
+.mr-pos { display: block; width: 26px; height: 26px; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); position: relative; animation: mr-beat 1s ease-in-out 8 alternate; }
+.mr-pos-dot { position: absolute; inset: 4px; border-radius: 50%; border: 2px solid #009de0; }
+.mr-pos-dot::after { content: ''; position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: #009de0; }
+@keyframes mr-beat { from { transform: scale(1); } to { transform: scale(1.25); } }
+@media (prefers-reduced-motion: reduce) { .mr-pos { animation: none; } }
 
 /* ── satellite ── */
 .mr-sat { background: var(--fc-surface-1); border-radius: 24px; box-shadow: var(--fc-shadow-sm); overflow: hidden; margin-bottom: 12px; }
@@ -927,7 +945,15 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
         if (el) el.style.transition = "opacity .2s";
       });
 
-      L.marker([lat, lon]).addTo(this._map);
+      L.marker([lat, lon], {
+        icon: L.divIcon({
+          className: "",
+          html: '<span class="mr-pos"><span class="mr-pos-dot"></span></span>',
+          iconSize: [26, 26],
+        }),
+        zIndexOffset: 1000,
+        interactive: false,
+      }).addTo(this._map);
 
       requestAnimationFrame(function () { card._map.invalidateSize(); });
       this._resizeObserver = new ResizeObserver(function () {

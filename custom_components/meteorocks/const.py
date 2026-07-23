@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "meteorocks"
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 ATTRIBUTION = "Data provided by meteo.rocks"
 
 DEFAULT_BASE_URL = "https://meteo.rocks"
