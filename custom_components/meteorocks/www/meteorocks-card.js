@@ -437,6 +437,7 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
 .mr-sat img { width: 100%; height: auto; display: block; }
 
 .mr-error { padding: 12px 16px; border-radius: 12px; background: #fde7e9; color: #8a1c25; font-size: 13px; }
+.mr-tappable { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 `;
 
   class MeteorocksCard extends HTMLElement {
@@ -463,7 +464,16 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
         config.sections || {}
       );
       const previous = this._config;
-      this._config = Object.assign({ dark_mode: "auto" }, config, { sections: sections });
+      this._config = Object.assign(
+        {
+          dark_mode: "auto",
+          tap_action: { action: "more-info" },
+          hold_action: { action: "none" },
+        },
+        config,
+        { sections: sections }
+      );
+      if (this._root) this._applyTappable();
 
       // Live-apply on reconfiguration (dashboard editor preview): clear hosts of
       // sections that got switched off, tear down the map if it went away, and
@@ -511,6 +521,77 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
         return !!(hass.themes && hass.themes.darkMode);
       }
       return mode === true || mode === "on" || mode === "true";
+    }
+
+    /* ── tap / hold actions ──
+       Standard HA actions on the sections that have no controls of their own
+       (current conditions, nowcast bars, satellite). The forecast tables, map
+       and timeline keep their built-in interactions. Execution is delegated to
+       the frontend via the hass-action event, so every action type HA knows
+       (more-info, navigate, url, perform-action, ...) works. */
+
+    static get _tappableHosts() {
+      return [".mrs-current", ".mrs-nowcast", ".mrs-satellite"];
+    }
+
+    _hasAction(name) {
+      const action = this._config[name];
+      return !!(action && action.action && action.action !== "none");
+    }
+
+    _bindActions() {
+      const card = this;
+      MeteorocksCard._tappableHosts.forEach(function (selector) {
+        const host = card._root.querySelector(selector);
+        if (!host) return;
+        host.addEventListener("click", function (ev) {
+          if (card._held) {
+            card._held = false;
+            return;
+          }
+          if (ev.composedPath().some(function (el) { return el.tagName === "A"; })) {
+            return; // let real links (e.g. the disclaimer) work untouched
+          }
+          card._fireAction("tap");
+        });
+        host.addEventListener("pointerdown", function () {
+          card._held = false;
+          clearTimeout(card._holdTimer);
+          if (!card._hasAction("hold_action")) return;
+          card._holdTimer = setTimeout(function () {
+            card._held = true;
+            card._fireAction("hold");
+          }, 500);
+        });
+        ["pointerup", "pointercancel", "pointerleave"].forEach(function (type) {
+          host.addEventListener(type, function () {
+            clearTimeout(card._holdTimer);
+          });
+        });
+      });
+    }
+
+    _applyTappable() {
+      const tappable = this._hasAction("tap_action") || this._hasAction("hold_action");
+      const card = this;
+      MeteorocksCard._tappableHosts.forEach(function (selector) {
+        const host = card._root.querySelector(selector);
+        if (host) host.classList.toggle("mr-tappable", tappable);
+      });
+    }
+
+    _fireAction(action) {
+      if (!this._hasAction(action + "_action")) return;
+      const event = new Event("hass-action", { bubbles: true, composed: true });
+      event.detail = {
+        config: {
+          entity: this._config.entity,
+          tap_action: this._config.tap_action,
+          hold_action: this._config.hold_action,
+        },
+        action: action,
+      };
+      this.dispatchEvent(event);
     }
 
     static getConfigElement() {
@@ -599,6 +680,8 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
           "</div></div>";
         this._root = this.shadowRoot.querySelector(".fc2");
         this._leafletStyleInjected = false;
+        this._bindActions();
+        this._applyTappable();
       }
       const s = this._config.sections;
       if (s.current) this._renderCurrent();
@@ -1127,6 +1210,8 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
       auto: "Auto (follow theme)",
       on: "Dark",
       off: "Light",
+      tap_action: "Tap action",
+      hold_action: "Hold action",
     },
     bg: {
       entity: "Weather обект",
@@ -1139,6 +1224,8 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
       auto: "Автоматично (според темата)",
       on: "Тъмен",
       off: "Светъл",
+      tap_action: "Действие при докосване",
+      hold_action: "Действие при задържане",
     },
   };
 
@@ -1179,6 +1266,8 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
             ? "off"
             : "auto";
       const data = { entity: this._config.entity || "", dark_mode: darkMode };
+      if (this._config.tap_action) data.tap_action = this._config.tap_action;
+      if (this._config.hold_action) data.hold_action = this._config.hold_action;
       for (const formKey in SECTION_KEYS) data[formKey] = sections[SECTION_KEYS[formKey]];
       return data;
     }
@@ -1211,6 +1300,14 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
             return { name: formKey, selector: { boolean: {} } };
           }),
         },
+        {
+          name: "tap_action",
+          selector: { ui_action: { default_action: "more-info" } },
+        },
+        {
+          name: "hold_action",
+          selector: { ui_action: { default_action: "none" } },
+        },
       ];
     }
 
@@ -1240,6 +1337,10 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
         dark_mode: value.dark_mode || "auto",
         sections: sections,
       });
+      delete config.tap_action;
+      delete config.hold_action;
+      if (value.tap_action) config.tap_action = value.tap_action;
+      if (value.hold_action) config.hold_action = value.hold_action;
       if (JSON.stringify(config) === JSON.stringify(this._config)) return;
       this._config = config;
       this.dispatchEvent(

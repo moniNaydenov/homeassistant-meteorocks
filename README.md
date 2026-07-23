@@ -73,7 +73,17 @@ sections:              # all default to true
   forecast: true
   map: true
   satellite: true
+tap_action:            # standard HA action; default: more-info on the weather entity
+  action: more-info
+hold_action:           # default: none
+  action: none
 ```
+
+`tap_action`/`hold_action` accept every standard Home Assistant action (`more-info`,
+`navigate`, `url`, `perform-action`, `assist`, `none`, ...). They fire on the sections
+that have no controls of their own — the current-conditions card, the nowcast bar chart
+and the satellite image. The forecast tables, the radar map and its timeline keep their
+built-in interactions (day selection, pan/zoom, frame stepping).
 
 If you manage Lovelace resources in YAML mode, add the resource manually:
 
