@@ -55,7 +55,12 @@ one metered API call per poll regardless of how many channels are requested.
 ## The card
 
 The integration serves and auto-registers the card when Lovelace runs in storage mode
-(the default). Add it to a dashboard:
+(the default). Add it from the card picker (*Meteo.rocks*) — the visual editor lets you
+pick the weather entity, the appearance (auto/dark/light) and toggle each section
+(current weather, 30-min rain, forecast, radar map, satellite) **per card**, so you can
+e.g. place one card with only the map and another with only the current conditions.
+
+The equivalent YAML:
 
 ```yaml
 type: custom:meteorocks-card

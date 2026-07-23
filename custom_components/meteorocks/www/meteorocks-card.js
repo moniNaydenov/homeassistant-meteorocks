@@ -444,7 +444,59 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
         { current: true, nowcast: true, forecast: true, map: true, satellite: true },
         config.sections || {}
       );
+      const previous = this._config;
       this._config = Object.assign({ dark_mode: "auto" }, config, { sections: sections });
+
+      // Live-apply on reconfiguration (dashboard editor preview): clear hosts of
+      // sections that got switched off, tear down the map if it went away, and
+      // refetch when the entity changed.
+      if (previous && this._root) {
+        if (previous.entity !== this._config.entity) {
+          this._dataVersion = null;
+          return; // next `set hass` refetches and re-renders
+        }
+        if (!sections.map && this._map) {
+          this._playing = false;
+          clearTimeout(this._playTimer);
+          this._map.remove();
+          this._map = null;
+        }
+        const hostBySection = {
+          current: ".mrs-current",
+          nowcast: ".mrs-nowcast",
+          forecast: ".mrs-forecast",
+          map: ".mrs-map",
+          satellite: ".mrs-satellite",
+        };
+        for (const key in hostBySection) {
+          if (!sections[key]) {
+            const host = this._root.querySelector(hostBySection[key]);
+            if (host) host.innerHTML = "";
+          }
+        }
+        if (this._hass) {
+          const dark = this._isDark(this._hass);
+          if (dark !== this._dark) {
+            this._dark = dark;
+            this._root.classList.toggle("dark-mode", dark);
+          }
+        }
+        if (this._data) this._render();
+      }
+    }
+
+    /* dark_mode: "auto" follows the HA theme; also accepts true/false and the
+       editor's "on"/"off" strings. */
+    _isDark(hass) {
+      const mode = this._config.dark_mode;
+      if (mode === "auto" || mode == null) {
+        return !!(hass.themes && hass.themes.darkMode);
+      }
+      return mode === true || mode === "on" || mode === "true";
+    }
+
+    static getConfigElement() {
+      return document.createElement("meteorocks-card-editor");
     }
 
     getCardSize() {
@@ -465,10 +517,7 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
         this._renderError("Entity not found: " + this._config.entity);
         return;
       }
-      const dark =
-        this._config.dark_mode === "auto"
-          ? !!(hass.themes && hass.themes.darkMode)
-          : !!this._config.dark_mode;
+      const dark = this._isDark(hass);
       if (dark !== this._dark) {
         this._dark = dark;
         if (this._root) this._root.classList.toggle("dark-mode", dark);
@@ -1038,12 +1087,153 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
     }
   }
 
+  /* ── visual card editor (ha-form based) ── */
+
+  const EDITOR_LABELS = {
+    en: {
+      entity: "Weather entity",
+      dark_mode: "Appearance",
+      show_current: "Current weather",
+      show_nowcast: "Rain next 30 minutes",
+      show_forecast: "Daily / hourly forecast",
+      show_map: "Nowcasting radar map",
+      show_satellite: "Satellite image",
+      auto: "Auto (follow theme)",
+      on: "Dark",
+      off: "Light",
+    },
+    bg: {
+      entity: "Weather обект",
+      dark_mode: "Изглед",
+      show_current: "Текущо време",
+      show_nowcast: "Валежи следващите 30 минути",
+      show_forecast: "Прогноза по дни и часове",
+      show_map: "Радарна карта (nowcasting)",
+      show_satellite: "Сателитно изображение",
+      auto: "Автоматично (според темата)",
+      on: "Тъмен",
+      off: "Светъл",
+    },
+  };
+
+  const SECTION_KEYS = {
+    show_current: "current",
+    show_nowcast: "nowcast",
+    show_forecast: "forecast",
+    show_map: "map",
+    show_satellite: "satellite",
+  };
+
+  class MeteorocksCardEditor extends HTMLElement {
+    setConfig(config) {
+      this._config = config || {};
+      this._renderForm();
+    }
+
+    set hass(hass) {
+      this._hass = hass;
+      this._renderForm();
+    }
+
+    get _labels() {
+      const lang = this._hass && this._hass.language && this._hass.language.startsWith("bg") ? "bg" : "en";
+      return EDITOR_LABELS[lang];
+    }
+
+    _formData() {
+      const sections = Object.assign(
+        { current: true, nowcast: true, forecast: true, map: true, satellite: true },
+        (this._config && this._config.sections) || {}
+      );
+      const mode = this._config.dark_mode;
+      const darkMode =
+        mode === true || mode === "on" || mode === "true"
+          ? "on"
+          : mode === false || mode === "off" || mode === "false"
+            ? "off"
+            : "auto";
+      const data = { entity: this._config.entity || "", dark_mode: darkMode };
+      for (const formKey in SECTION_KEYS) data[formKey] = sections[SECTION_KEYS[formKey]];
+      return data;
+    }
+
+    _schema() {
+      const labels = this._labels;
+      return [
+        {
+          name: "entity",
+          required: true,
+          selector: { entity: { filter: [{ integration: "meteorocks", domain: "weather" }] } },
+        },
+        {
+          name: "dark_mode",
+          selector: {
+            select: {
+              mode: "dropdown",
+              options: [
+                { value: "auto", label: labels.auto },
+                { value: "on", label: labels.on },
+                { value: "off", label: labels.off },
+              ],
+            },
+          },
+        },
+        {
+          name: "",
+          type: "grid",
+          schema: Object.keys(SECTION_KEYS).map(function (formKey) {
+            return { name: formKey, selector: { boolean: {} } };
+          }),
+        },
+      ];
+    }
+
+    _renderForm() {
+      if (!this._config) return;
+      if (!this._form) {
+        this._form = document.createElement("ha-form");
+        const editor = this;
+        this._form.computeLabel = function (schema) {
+          return editor._labels[schema.name] || schema.name;
+        };
+        this._form.addEventListener("value-changed", function (ev) {
+          editor._valueChanged(ev.detail.value);
+        });
+        this.appendChild(this._form);
+      }
+      if (this._hass) this._form.hass = this._hass;
+      this._form.data = this._formData();
+      this._form.schema = this._schema();
+    }
+
+    _valueChanged(value) {
+      const sections = {};
+      for (const formKey in SECTION_KEYS) sections[SECTION_KEYS[formKey]] = value[formKey] !== false;
+      const config = Object.assign({}, this._config, {
+        entity: value.entity,
+        dark_mode: value.dark_mode || "auto",
+        sections: sections,
+      });
+      if (JSON.stringify(config) === JSON.stringify(this._config)) return;
+      this._config = config;
+      this.dispatchEvent(
+        new CustomEvent("config-changed", {
+          detail: { config: config },
+          bubbles: true,
+          composed: true,
+        })
+      );
+    }
+  }
+
   customElements.define("meteorocks-card", MeteorocksCard);
+  customElements.define("meteorocks-card-editor", MeteorocksCardEditor);
   window.customCards = window.customCards || [];
   window.customCards.push({
     type: "meteorocks-card",
     name: "Meteo.rocks",
     description: "meteo.rocks forecast: current conditions, nowcasting, forecast, radar map, satellite",
-    preview: false,
+    preview: true,
+    documentationURL: "https://github.com/moninaydenov/homeassistant-meteorocks",
   });
 })();
