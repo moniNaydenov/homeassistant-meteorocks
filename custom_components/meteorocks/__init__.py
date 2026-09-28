@@ -106,18 +106,20 @@ async def _async_register_lovelace_resource(hass: HomeAssistant) -> None:
             return
         # hass.data["lovelace"] is a dict up to HA 2025.1 and a dataclass later.
         if isinstance(lovelace, dict):
-            mode = lovelace.get("mode")
             resources = lovelace.get("resources")
         else:
-            mode = getattr(lovelace, "mode", None)
             resources = getattr(lovelace, "resources", None)
-        if mode != "storage":
-            _LOGGER.debug("Lovelace not in storage mode; add the card resource manually")
-            return
-        if resources is None:
+        # Only the storage-mode collection accepts new items. Checked on the
+        # collection itself: the dataclass' "mode" field was renamed to
+        # "resource_mode" in HA 2026, which made a mode check skip registration.
+        if resources is None or not hasattr(resources, "async_create_item"):
+            _LOGGER.debug("Lovelace resources not in storage mode; add the card resource manually")
             return
         if not resources.loaded:
             await resources.async_load()
+            # Same as HA core does after loading; otherwise the collection is
+            # loaded again on its first use.
+            resources.loaded = True
 
         for item in resources.async_items():
             if item.get("url", "").split("?")[0] == f"{STATIC_URL_BASE}/{CARD_FILENAME}":

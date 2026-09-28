@@ -15,6 +15,7 @@
  *   type: custom:meteorocks-card
  *   entity: weather.meteo_rocks
  *   dark_mode: auto            # auto | true | false
+ *   animated_icons: false      # animated current-conditions icon (costs CPU)
  *   sections:
  *     map: false
  */
@@ -61,6 +62,9 @@
         'We use an experimental model provided by <a href="https://deepmind.google/science/weathernext/" target="_blank" rel="noopener">Google Deepmind - Google Weathernext2</a>. There may be inaccuracies.',
       loadingMap: "Loading map",
       satellite: "Satellite",
+      waiting: "Waiting for Meteo.rocks data…",
+      entityNotFound: "Entity not found",
+      fetchFailed: "Could not load Meteo.rocks data, retrying",
     },
     bg: {
       lastactive: "Последна актуализация",
@@ -83,8 +87,23 @@
         'Използваме експериментал модел, предоставен от <a href="https://deepmind.google/science/weathernext/" target="_blank" rel="noopener">Google Deepmind - Google Weathernext2</a>. Възможни са неточности.',
       loadingMap: "Зареждане на карта",
       satellite: "Сателит",
+      waiting: "Изчакване на данни от Meteo.rocks…",
+      entityNotFound: "Обектът не е намерен",
+      fetchFailed: "Неуспешно зареждане на данните от Meteo.rocks, нов опит",
     },
   };
+
+  // Backoff for failed data fetches. Without it a failing fetch was retried on
+  // every hass update, i.e. on every state change anywhere in the instance.
+  const RETRY_MIN_MS = 2000;
+  const RETRY_MAX_MS = 60000;
+
+  /* hass.callApi rejects with a plain {error, status_code, body} object. */
+  function errorText(err) {
+    if (!err) return "unknown error";
+    if (err.body && err.body.message) return err.body.message;
+    return err.error || err.message || String(err);
+  }
 
   function esc(value) {
     return String(value == null ? "" : value)
@@ -437,6 +456,9 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
 .mr-sat img { width: 100%; height: auto; display: block; }
 
 .mr-error { padding: 12px 16px; border-radius: 12px; background: #fde7e9; color: #8a1c25; font-size: 13px; }
+.mr-status { padding: 12px 16px; border-radius: 12px; background: var(--fc-surface-1); color: var(--fc-ink-3); font-size: 13px; margin-bottom: 12px; }
+.mr-status.error { background: #fde7e9; color: #8a1c25; }
+.mr-status[hidden] { display: none; }
 .mr-tappable { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 `;
 
@@ -453,6 +475,10 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
       this._playTimer = null;
       this._nowcastStart = null;
       this._fetching = false;
+      this._entryId = null;
+      this._retryTimer = null;
+      this._retryDelay = 0;
+      this._statusKey = "";
     }
 
     setConfig(config) {
@@ -467,6 +493,9 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
       this._config = Object.assign(
         {
           dark_mode: "auto",
+          // Off by default: the animated (SMIL) icon repaints every frame, which
+          // keeps the browser busy for as long as the card is on screen.
+          animated_icons: false,
           tap_action: { action: "more-info" },
           hold_action: { action: "none" },
         },
@@ -475,20 +504,29 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
       );
       if (this._root) this._applyTappable();
 
+      if (previous && previous.entity !== this._config.entity) {
+        // Another weather entity: drop everything tied to the old one.
+        this._data = null;
+        this._dataVersion = null;
+        this._entryId = null;
+        this._retryDelay = 0;
+        clearTimeout(this._retryTimer);
+        this._retryTimer = null;
+        if (this._root) {
+          this._teardownMap();
+          this._root.querySelectorAll(".mrs").forEach(function (host) {
+            host._mrHtml = "";
+            host.innerHTML = "";
+          });
+        }
+        this._update();
+        return;
+      }
+
       // Live-apply on reconfiguration (dashboard editor preview): clear hosts of
-      // sections that got switched off, tear down the map if it went away, and
-      // refetch when the entity changed.
+      // sections that got switched off and tear down the map if it went away.
       if (previous && this._root) {
-        if (previous.entity !== this._config.entity) {
-          this._dataVersion = null;
-          return; // next `set hass` refetches and re-renders
-        }
-        if (!sections.map && this._map) {
-          this._playing = false;
-          clearTimeout(this._playTimer);
-          this._map.remove();
-          this._map = null;
-        }
+        if (!sections.map) this._teardownMap();
         const hostBySection = {
           current: ".mrs-current",
           nowcast: ".mrs-nowcast",
@@ -499,7 +537,10 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
         for (const key in hostBySection) {
           if (!sections[key]) {
             const host = this._root.querySelector(hostBySection[key]);
-            if (host) host.innerHTML = "";
+            if (host) {
+              host._mrHtml = "";
+              host.innerHTML = "";
+            }
           }
         }
         if (this._hass) {
@@ -510,6 +551,19 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
           }
         }
         if (this._data) this._render();
+      }
+    }
+
+    _teardownMap() {
+      this._playing = false;
+      clearTimeout(this._playTimer);
+      if (this._resizeObserver) {
+        this._resizeObserver.disconnect();
+        this._resizeObserver = null;
+      }
+      if (this._map) {
+        this._map.remove();
+        this._map = null;
       }
     }
 
@@ -611,78 +665,132 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
 
     set hass(hass) {
       this._hass = hass;
-      const st = hass.states[this._config.entity];
-      if (!st) {
-        this._renderError("Entity not found: " + this._config.entity);
-        return;
-      }
+      this._update();
+    }
+
+    /* Reconcile with the latest hass. Runs on every hass update (i.e. on every
+       state change in the instance), so the steady state must stay a cheap
+       version comparison. Problems only ever show up in the status line; the
+       last good data stays on screen, so nothing gets stuck on an error. */
+    _update() {
+      const hass = this._hass;
+      if (!hass || !this._config) return;
       const dark = this._isDark(hass);
       if (dark !== this._dark) {
         this._dark = dark;
         if (this._root) this._root.classList.toggle("dark-mode", dark);
       }
-      const version = st.attributes.data_version;
-      if (version !== this._dataVersion && !this._fetching) {
-        this._fetching = true;
-        const entryId = st.attributes.meteorocks_entry_id;
-        const card = this;
-        hass
-          .callApi("GET", "meteorocks/" + entryId + "/data")
-          .then(function (data) {
+      const st = hass.states[this._config.entity];
+      if (!st) {
+        this._setStatus(this._str.entityNotFound + ": " + this._config.entity, true);
+        return;
+      }
+      const attrs = st.attributes || {};
+      if (attrs.meteorocks_entry_id) this._entryId = attrs.meteorocks_entry_id;
+      const version = attrs.data_version;
+      if (version == null || !this._entryId) {
+        // Unavailable (a poll failed) or restored during HA startup: such states
+        // carry no attributes. Keep the last data; the version returns with the
+        // entity.
+        this._setStatus(this._data ? "" : this._str.waiting, false);
+        return;
+      }
+      if (version !== this._dataVersion && this.isConnected) this._fetch(version);
+      if (this._data) this._setStatus("", false);
+    }
+
+    _fetch(version) {
+      if (this._fetching || this._retryTimer) return;
+      this._fetching = true;
+      const card = this;
+      this._hass
+        .callApi("GET", "meteorocks/" + this._entryId + "/data")
+        .then(
+          function (data) {
+            card._retryDelay = 0;
             card._dataVersion = version;
             card._data = data;
+            card._setStatus("", false);
             card._render();
-          })
-          .catch(function (err) {
-            card._renderError("Data fetch failed: " + (err && err.message ? err.message : err));
-          })
-          .finally(function () {
-            card._fetching = false;
-          });
-      }
+          },
+          function (err) {
+            // Retry on a timer rather than on the next hass update: those can
+            // come many times a second, or not at all for minutes.
+            card._retryDelay = Math.min(Math.max(card._retryDelay * 2, RETRY_MIN_MS), RETRY_MAX_MS);
+            if (card.isConnected) {
+              card._retryTimer = setTimeout(function () {
+                card._retryTimer = null;
+                card._update();
+              }, card._retryDelay);
+            }
+            if (!card._data) card._setStatus(card._str.fetchFailed + " (" + errorText(err) + ")", true);
+          }
+        )
+        .finally(function () {
+          card._fetching = false;
+          // A newer data_version may have arrived while the request was in flight.
+          if (!card._retryTimer) card._update();
+        });
     }
 
     get _str() {
-      const lang = (this._data && this._data.language) || "bg";
+      let lang = this._data && this._data.language;
+      if (!lang) {
+        // No data yet: status messages follow the HA UI language.
+        const ui = (this._hass && this._hass.language) || "bg";
+        lang = ui.startsWith("bg") ? "bg" : "en";
+      }
       return STRINGS[lang] || STRINGS.bg;
     }
 
-    _renderError(message) {
-      if (!this.shadowRoot) return;
-      if (this._root) {
-        const box = this._root.querySelector(".mr-error");
-        if (box) {
-          box.textContent = message;
-          return;
-        }
+    _setStatus(message, isError) {
+      message = message || "";
+      if (!this._root) {
+        if (!message) return;
+        this._ensureRoot();
       }
-      this.shadowRoot.innerHTML =
-        "<style>" + CARD_CSS + "</style>" +
-        '<div class="mr-container"><div class="fc2"><div class="mr-error">' +
-        esc(message) + "</div></div></div>";
-      this._root = null;
-      this._map = null;
+      const key = (isError ? "!" : "") + message;
+      if (key === this._statusKey) return;
+      this._statusKey = key;
+      const box = this._root.querySelector(".mr-status");
+      box.textContent = message;
+      box.hidden = !message;
+      box.classList.toggle("error", !!isError);
     }
 
     /* ─────────── skeleton + section rendering ─────────── */
 
+    _ensureRoot() {
+      if (this._root) return;
+      this.shadowRoot.innerHTML =
+        "<style>" + CARD_CSS + "</style>" +
+        '<div class="mr-container"><div class="fc2' + (this._dark ? " dark-mode" : "") + '">' +
+        '<div class="mr-status" hidden></div>' +
+        '<div class="mrs mrs-current"></div>' +
+        '<div class="mrs mrs-nowcast"></div>' +
+        '<div class="mrs mrs-forecast"></div>' +
+        '<div class="mrs mrs-map"></div>' +
+        '<div class="mrs mrs-satellite"></div>' +
+        "</div></div>";
+      this._root = this.shadowRoot.querySelector(".fc2");
+      this._statusKey = "";
+      this._leafletStyleInjected = false;
+      this._bindActions();
+      this._applyTappable();
+    }
+
+    /* Assign section markup only when it changed, so polls that bring nothing
+       new for a section leave its DOM (and any running icon animation) alone. */
+    _setHtml(host, html) {
+      if (host._mrHtml === html) return false;
+      host._mrHtml = html;
+      host.innerHTML = html;
+      return true;
+    }
+
     _render() {
-      if (!this._data) return;
-      if (!this._root) {
-        this.shadowRoot.innerHTML =
-          "<style>" + CARD_CSS + "</style>" +
-          '<div class="mr-container"><div class="fc2' + (this._dark ? " dark-mode" : "") + '">' +
-          '<div class="mrs-current"></div>' +
-          '<div class="mrs-nowcast"></div>' +
-          '<div class="mrs-forecast"></div>' +
-          '<div class="mrs-map"></div>' +
-          '<div class="mrs-satellite"></div>' +
-          "</div></div>";
-        this._root = this.shadowRoot.querySelector(".fc2");
-        this._leafletStyleInjected = false;
-        this._bindActions();
-        this._applyTappable();
-      }
+      if (!this._data || !this._config || !this.isConnected) return;
+      this._ensureRoot();
       const s = this._config.sections;
       if (s.current) this._renderCurrent();
       if (s.nowcast) this._renderNowcast();
@@ -696,11 +804,11 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
       const cur = payload.current;
       const host = this._root.querySelector(".mrs-current");
       if (!cur) {
-        host.innerHTML = "";
+        this._setHtml(host, "");
         return;
       }
       const str = this._str;
-      host.innerHTML =
+      this._setHtml(host,
         '<div class="cc-card">' +
         '<div class="cc-top">' +
         '<div class="cc-loc"><span class="pin">' + icon("mdi:map-marker") + "</span>" +
@@ -710,7 +818,7 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
         '<div class="cc-hero">' +
         '<div class="cc-hero-l">' +
         '<div class="cc-glyph" style="background: ' + esc(cur.sky_gradient || "") + '">' +
-        meteocon(cur.weathericon, true) + "</div>" +
+        meteocon(cur.weathericon, this._config.animated_icons === true) + "</div>" +
         '<div class="cc-tempchip" style="background: ' + esc(cur.temp_chip_bg) + "; color: " + esc(cur.temp_chip_fg) + '">' +
         "<span>" + esc(cur.temp) + '</span><span class="deg">&deg;</span></div>' +
         "</div>" +
@@ -741,7 +849,7 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
         '<div class="cc-stat tm"><div class="k">' + esc(str.moon) + '</div><div class="v">' +
         '<span class="moon-phase phase-' + Number(cur.moonphase || 0) + '"></span> <span>' +
         esc(cur.moonrise || "-") + "</span>&ndash;<span>" + esc(cur.moonset || "-") + "</span></div></div>" +
-        "</div></div>";
+        "</div></div>");
     }
 
     _renderNowcast() {
@@ -749,7 +857,7 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
       const table = nowcasting.table || {};
       const host = this._root.querySelector(".mrs-nowcast");
       if (!table.data || !table.data.length) {
-        host.innerHTML = "";
+        this._setHtml(host, "");
         return;
       }
       const str = this._str;
@@ -775,7 +883,7 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
           '<div class="cc-now-dry"><span class="ic">' + icon("mdi:white-balance-sunny") +
           "</span><span>" + esc(str.noRain) + "</span></div>";
       }
-      host.innerHTML =
+      this._setHtml(host,
         '<div class="cc-nowcard">' +
         '<div class="cc-now-head">' +
         '<div class="cc-now-title">' + esc(str.nowcastTitle) + "</div>" +
@@ -783,7 +891,7 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
         esc(table.lastmodelrunsince || "") + " " + esc(str.ago) + "</div>" +
         "</div>" +
         '<div class="mr-now-body">' + body + "</div>" +
-        "</div>";
+        "</div>");
     }
 
     /* ── forecast section ── */
@@ -830,7 +938,7 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
       const days = (forecast.data && forecast.data.days) || [];
       const host = this._root.querySelector(".mrs-forecast");
       if (!days.length) {
-        host.innerHTML = "";
+        this._setHtml(host, "");
         return;
       }
       const card = this;
@@ -893,7 +1001,7 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
         })
         .join("");
 
-      host.innerHTML =
+      const changed = this._setHtml(host,
         '<section class="forecast-detailed">' +
         "<h3>" + esc(str.forecastTitle) + "</h3>" +
         '<div class="fc2-card"><div class="fc2-days">' + daysHtml + "</div></div>" +
@@ -913,7 +1021,8 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
         "</div></div>" +
         '<div class="forecast-lastmodelrun">' + esc(str.lastmodelrunsince) + " " +
         esc(forecast.lastmodelrunsince || "") + " " + esc(str.ago) + ". " + str.disclaimer + "</div>" +
-        "</section>";
+        "</section>");
+      if (!changed) return;
 
       host.querySelectorAll(".fc2-day").forEach(function (el) {
         el.addEventListener("click", function () {
@@ -929,6 +1038,7 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
       }
       this._selDay = index;
       const host = this._root.querySelector(".mrs-forecast");
+      host._mrHtml = null; // DOM edited in place; next render must not skip
       host.querySelectorAll(".fc2-day").forEach(function (el) {
         el.classList.toggle("sel", Number(el.dataset.day) === index);
       });
@@ -973,7 +1083,8 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
         loadLeaflet()
           .then(function (css) {
             card._mapPending = false;
-            if (!card._root) return; // card got torn down while loading
+            // Card torn down, map section cleared, or map already built meanwhile.
+            if (!card._root || card._map || !host.querySelector(".mr-map")) return;
             if (!card._leafletStyleInjected) {
               const style = document.createElement("style");
               style.textContent = css;
@@ -1178,21 +1289,20 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
       if (img.getAttribute("src") !== url) img.setAttribute("src", url);
     }
 
+    connectedCallback() {
+      // Re-attached (view switch, masonry reflow): rebuild from the cached data
+      // instead of refetching, then resume any pending fetch/retry.
+      if (this._data) this._render();
+      this._update();
+    }
+
     disconnectedCallback() {
-      this._playing = false;
-      clearTimeout(this._playTimer);
-      if (this._resizeObserver) {
-        this._resizeObserver.disconnect();
-        this._resizeObserver = null;
-      }
-      if (this._map) {
-        this._map.remove();
-        this._map = null;
-      }
+      this._teardownMap();
+      clearTimeout(this._retryTimer);
+      this._retryTimer = null;
       this._mapPending = false;
       this._leafletStyleInjected = false;
       this._root = null;
-      this._dataVersion = null;
     }
   }
 
@@ -1202,6 +1312,7 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
     en: {
       entity: "Weather entity",
       dark_mode: "Appearance",
+      animated_icons: "Animated weather icon (uses more CPU)",
       show_current: "Current weather",
       show_nowcast: "Rain next 30 minutes",
       show_forecast: "Daily / hourly forecast",
@@ -1216,6 +1327,7 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
     bg: {
       entity: "Weather обект",
       dark_mode: "Изглед",
+      animated_icons: "Анимирана икона на времето (натоварва процесора)",
       show_current: "Текущо време",
       show_nowcast: "Валежи следващите 30 минути",
       show_forecast: "Прогноза по дни и часове",
@@ -1265,7 +1377,11 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
           : mode === false || mode === "off" || mode === "false"
             ? "off"
             : "auto";
-      const data = { entity: this._config.entity || "", dark_mode: darkMode };
+      const data = {
+        entity: this._config.entity || "",
+        dark_mode: darkMode,
+        animated_icons: this._config.animated_icons === true,
+      };
       if (this._config.tap_action) data.tap_action = this._config.tap_action;
       if (this._config.hold_action) data.hold_action = this._config.hold_action;
       for (const formKey in SECTION_KEYS) data[formKey] = sections[SECTION_KEYS[formKey]];
@@ -1293,6 +1409,7 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
             },
           },
         },
+        { name: "animated_icons", selector: { boolean: {} } },
         {
           name: "",
           type: "grid",
@@ -1337,6 +1454,8 @@ span.moon-phase.phase-8 { background-position: 100% 0; }
         dark_mode: value.dark_mode || "auto",
         sections: sections,
       });
+      delete config.animated_icons;
+      if (value.animated_icons) config.animated_icons = true;
       delete config.tap_action;
       delete config.hold_action;
       if (value.tap_action) config.tap_action = value.tap_action;
