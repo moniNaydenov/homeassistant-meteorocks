@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any
@@ -35,7 +36,10 @@ class MeteorocksData:
     sat24url: str | None = None
     servertime: int = 0
     # Bumped only when a channel actually changed; the card watches this via the
-    # weather entity's data_version attribute and refetches on change.
+    # weather entity's data_version attribute and refetches on change. A
+    # millisecond timestamp rather than a counter, so values never repeat
+    # across HA restarts (a dashboard left open must not mistake the first
+    # data after a restart for data it already has).
     version: int = 0
 
 
@@ -101,7 +105,7 @@ class MeteorocksCoordinator(DataUpdateCoordinator[MeteorocksData]):
 
         version = self.data.version if self.data else 0
         if changed or not self.data:
-            version += 1
+            version = max(version + 1, int(time.time() * 1000))
 
         return MeteorocksData(
             current=merged["current"],

@@ -24,12 +24,14 @@ class MeteorocksDataView(HomeAssistantView):
     async def get(self, request, entry_id: str):
         hass = request.app["hass"]
         entry = hass.config_entries.async_get_entry(entry_id)
-        if (
-            entry is None
-            or entry.domain != DOMAIN
-            or entry.state is not ConfigEntryState.LOADED
-        ):
+        if entry is None or entry.domain != DOMAIN:
             return self.json_message("Unknown config entry", HTTPStatus.NOT_FOUND)
+        if entry.state is not ConfigEntryState.LOADED:
+            # Still setting up, or retrying its first refresh (e.g. network not
+            # up yet after a reboot). Transient: the card retries.
+            return self.json_message(
+                "Integration not ready", HTTPStatus.SERVICE_UNAVAILABLE
+            )
 
         coordinator = entry.runtime_data
         data = coordinator.data

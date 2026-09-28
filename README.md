@@ -56,9 +56,10 @@ one metered API call per poll regardless of how many channels are requested.
 
 The integration serves and auto-registers the card when Lovelace runs in storage mode
 (the default). Add it from the card picker (*Meteo.rocks*) — the visual editor lets you
-pick the weather entity, the appearance (auto/dark/light) and toggle each section
-(current weather, 30-min rain, forecast, radar map, satellite) **per card**, so you can
-e.g. place one card with only the map and another with only the current conditions.
+pick the weather entity, the appearance (auto/dark/light), whether the current-conditions
+icon is animated, and toggle each section (current weather, 30-min rain, forecast, radar
+map, satellite) **per card**, so you can e.g. place one card with only the map and
+another with only the current conditions.
 
 The equivalent YAML:
 
@@ -67,6 +68,7 @@ type: custom:meteorocks-card
 entity: weather.meteo_rocks
 # optional:
 dark_mode: auto        # auto (follow HA theme) | true | false
+animated_icons: false  # animate the current-conditions icon (see below)
 sections:              # all default to true
   current: true
   nowcast: true
@@ -84,6 +86,10 @@ hold_action:           # default: none
 that have no controls of their own — the current-conditions card, the nowcast bar chart
 and the satellite image. The forecast tables, the radar map and its timeline keep their
 built-in interactions (day selection, pan/zoom, frame stepping).
+
+`animated_icons` is off by default: the animated Meteocons icon is redrawn by the
+browser every frame for as long as the card is on screen, which is a constant CPU
+load on wall tablets and kiosk displays. The static icon costs nothing once drawn.
 
 If you manage Lovelace resources in YAML mode, add the resource manually:
 
