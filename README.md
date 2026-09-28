@@ -106,6 +106,8 @@ lovelace:
   browser; everything else flows through Home Assistant (the card never calls the
   meteo.rocks API from the browser).
 - If the API key is deactivated, the integration raises a re-authentication flow.
+- The integration icon and logo ship in `custom_components/meteorocks/brand/` and show up
+  on Home Assistant 2026.3 or newer; older versions show a generic placeholder.
 
 ## License
 
